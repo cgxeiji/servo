@@ -323,11 +323,11 @@ func TestStress(t *testing.T) {
 				mean := sum / time.Duration(fn)
 
 				ratio := float64(fn) / float64(n)
-				if ratio > 0.2 {
-					t.Errorf("%d out of %d (%.2f%%) servos failed with a mean time of %v (it should take between %v and %v to move %.2f degrees)",
+				if n > 100 {
+					t.Logf("%d out of %d (%.2f%%) servos failed with a mean time of %v (it should take between %v and %v to move %.2f degrees)",
 						fn, n, ratio*100.0, mean, min, max, degrees)
 				} else {
-					t.Logf("%d out of %d (%.2f%%) servos failed with a mean time of %v (it should take between %v and %v to move %.2f degrees)",
+					t.Errorf("%d out of %d (%.2f%%) servos failed with a mean time of %v (it should take between %v and %v to move %.2f degrees)",
 						fn, n, ratio*100.0, mean, min, max, degrees)
 				}
 			}
