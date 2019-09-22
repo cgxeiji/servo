@@ -2,12 +2,14 @@ package servo
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 type blaster struct {
@@ -15,6 +17,7 @@ type blaster struct {
 	buffer   chan string
 	data     chan map[int]float64
 	done     chan struct{}
+	rate     time.Duration
 }
 
 var _blaster *blaster
@@ -24,6 +27,7 @@ func init() {
 		buffer: make(chan string),
 		data:   make(chan map[int]float64, 1),
 		done:   make(chan struct{}),
+		rate:   40 * time.Millisecond,
 	}
 	_blaster.data <- make(map[int]float64)
 
@@ -70,13 +74,25 @@ func (b *blaster) start() error {
 	}
 
 	var started sync.WaitGroup
-	started.Add(1)
+	started.Add(2)
 	go func() {
 		started.Done()
 		for {
 			select {
 			case data := <-b.buffer:
 				b.send(data)
+			case <-b.done:
+				return
+			}
+		}
+	}()
+	go func() {
+		t := time.NewTicker(b.rate)
+		started.Done()
+		for {
+			select {
+			case <-t.C:
+				b.flush()
 			case <-b.done:
 				return
 			}
@@ -107,6 +123,8 @@ func (b *blaster) send(data string) {
 	const blasterFile = "/dev/pi-blaster"
 
 	w := ioutil.Discard
+	//w, C := testPipe()
+	//defer C()
 
 	if !b.disabled {
 		f, err := os.OpenFile(blasterFile,
@@ -119,6 +137,16 @@ func (b *blaster) send(data string) {
 	}
 
 	fmt.Fprintf(w, "%s", data)
+}
+
+func testPipe() (io.Writer, func() error) {
+	f, err := os.OpenFile("test.log",
+		os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0777)
+	if err != nil {
+		panic(err)
+	}
+
+	return f, f.Close
 }
 
 // flush parses the data into "PIN=PWM PIN=PWM" format and sends it to
