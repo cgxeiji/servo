@@ -7,11 +7,11 @@ Servo is a Go library to control servo motors on a Raspberry Pi using pi-blaster
 **This library controls physical pins of a Raspberry Pi using pi-blaster.
 Incorrect pin assignment or pi-blaster configuration may DAMAGE the Raspberry
 Pi or connected devices.  Please, make sure to carefully check your connections
-and code before running your program.
+and code before running your program.**
 
-You have been warned.
+**You have been warned.**
 
-Good luck and Godspeed!**
+**Good luck and Godspeed!**
 
 ## About the library
 
@@ -26,13 +26,19 @@ Each connected servo is managed independently from one another and is designed
 to be concurrent-safe.
 
 If `servo` detects that `pi-blaster` is not running on the system when
-executed, it will throw a warning and redirect all writes to `/dev/null`. This
-way, you can build and test your code on machines other than a Raspberry Pi.
+executed, it will throw a warning:
+```
+YYYY/MM/DD HH:mm:ss WARNING: pi-blaster was not found running: start pi-blaster to avoid this error
+        (servo will continue with pi-blaster disabled)
 
-## Testing
+```
+and redirect all writes to `/dev/null`. This way, you can build and test your code
+on machines other than a Raspberry Pi or do a cold run before commiting.
+
+## Testing your System
 
 To check if your system can handle real-time control of servos (i.e. move the
-servos at the expected speed) a system check and a stress test are provided.
+servos at the expected speed), a system check and a stress test are provided.
 
 You can run them with:
 ```
