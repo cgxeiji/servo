@@ -8,9 +8,9 @@ Servo is a Go library to control servo motors on a Raspberry Pi using pi-blaster
 > Incorrect pin assignment or pi-blaster configuration may DAMAGE the Raspberry
 > Pi or connected devices.  Please, make sure to carefully check your connections
 > and code before running your program.**
-> 
+>
 > **You have been warned.**
-> 
+>
 > **Good luck and Godspeed!**
 
 ## About the library
@@ -32,7 +32,7 @@ YYYY/MM/DD HH:mm:ss WARNING: pi-blaster was not found running: start pi-blaster 
         (servo will continue with pi-blaster disabled)
 ```
 and redirect all writes to `/dev/null`. This way, you can build and test your code
-on machines other than a Raspberry Pi or do a cold run before commiting.
+on machines other than a Raspberry Pi or do a cold run before committing.
 
 ## Testing your System
 
