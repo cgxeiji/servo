@@ -87,6 +87,15 @@ func (b *blaster) start() error {
 	return nil
 }
 
+// Close cleans up the servo package. Make sure to call this in your main
+// goroutine.
+func Close() {
+	if _blaster == nil {
+		return
+	}
+	close(_blaster.done)
+}
+
 // close stops blaster if it was started.
 func (b *blaster) close() {
 	close(b.done)
@@ -101,7 +110,7 @@ func (b *blaster) send(data string) {
 
 	if !b.disabled {
 		f, err := os.OpenFile(blasterFile,
-			os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			os.O_WRONLY, os.ModeNamedPipe)
 		if err != nil {
 			panic(err)
 		}

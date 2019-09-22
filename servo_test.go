@@ -1,3 +1,5 @@
+// +build !live
+
 package servo
 
 import (
@@ -264,75 +266,6 @@ func TestServo_Wait(t *testing.T) {
 	}
 
 	wg.Wait()
-}
-
-func TestStress(t *testing.T) {
-	degrees := 180.0
-	_t := time.Duration(degrees/315.7*1000) * time.Millisecond
-	const tolerance = 50 * time.Millisecond
-	min := _t - tolerance
-	max := _t + tolerance
-
-	for n := 100; n <= 10000; n *= 10 {
-		t.Run(fmt.Sprintf("%dServos", n), func(t *testing.T) {
-			servos := make([]*Servo, 0, n)
-			times := make([]time.Duration, 0, n)
-
-			for i := 0; i < n; i++ {
-				s, err := Connect(i)
-				if err != nil {
-					t.Fatalf("servos[%d] -> %v", i, err)
-				}
-				servos = append(servos, s)
-			}
-
-			var wg sync.WaitGroup
-			timeout := make(chan time.Duration)
-
-			wg.Add(n)
-
-			for i := 0; i < n; i++ {
-				go func(i int) {
-					defer wg.Done()
-					servos[i].moveTo(180)
-					start := time.Now()
-					servos[i].reach()
-					elapsed := time.Since(start)
-					if elapsed < min || elapsed > max {
-						timeout <- elapsed
-					}
-				}(i)
-			}
-
-			go func() {
-				wg.Wait()
-				close(timeout)
-			}()
-
-			for t := range timeout {
-				times = append(times, t)
-			}
-
-			fn := len(times)
-
-			if fn != 0 {
-				sum := time.Duration(0)
-				for _, t := range times {
-					sum += t
-				}
-				mean := sum / time.Duration(fn)
-
-				ratio := float64(fn) / float64(n)
-				if n > 100 {
-					t.Logf("%d out of %d (%.2f%%) servos failed with a mean time of %v (it should take between %v and %v to move %.2f degrees)",
-						fn, n, ratio*100.0, mean, min, max, degrees)
-				} else {
-					t.Errorf("%d out of %d (%.2f%%) servos failed with a mean time of %v (it should take between %v and %v to move %.2f degrees)",
-						fn, n, ratio*100.0, mean, min, max, degrees)
-				}
-			}
-		})
-	}
 }
 
 func TestClamp(t *testing.T) {
