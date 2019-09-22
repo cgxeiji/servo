@@ -68,8 +68,11 @@ type Servo struct {
 	// Together with servo.Centered, the range of the servo is set to -1 to 1.
 	Flags flag
 
-	target   float64
-	position float64
+	// These calibration variables should be immutables once initialized.
+	minPulse, maxPulse float64
+
+	target, position float64
+	done             chan struct{}
 
 	step, maxStep float64
 
@@ -106,6 +109,8 @@ func Connect(gpio int) (*Servo, error) {
 		finished: sync.NewCond(&sync.Mutex{}),
 		lock:     new(sync.RWMutex),
 
+		done: make(chan struct{}),
+
 		rate: rate.NewLimiter(rate.Every(updateRate), 1),
 	}
 
@@ -132,22 +137,6 @@ func (s *Servo) Position() float64 {
 // depends on the servo's Flags. The target is automatically clamped to the set
 // range.
 func (s *Servo) MoveTo(target float64) {
-	if s.isIdle() {
-		// activate reach() only if the servo is idle and after setting the
-		// target.
-		defer func() {
-			var wg sync.WaitGroup
-
-			// wait until reach() has been called.
-			wg.Add(1)
-			go func() {
-				wg.Done()
-				s.reach()
-			}()
-			wg.Wait()
-		}()
-	}
-
 	s.moveTo(target)
 }
 
@@ -160,9 +149,11 @@ func (s *Servo) moveTo(target float64) {
 	}
 
 	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	s.target = clamp(target, 0, 180)
+	s.lock.Unlock()
+	if s.isIdle() {
+		s.reach(s.done)
+	}
 }
 
 // Stop stops moving the servo. This effectively sets the target position to
@@ -175,28 +166,47 @@ func (s *Servo) Stop() {
 }
 
 // reach tries to reach the assigned target.
-func (s *Servo) reach() {
-	if !s.isIdle() {
-		panic(fmt.Errorf("%v called reach() while busy", s))
-	}
+func (s *Servo) reach(done <-chan struct{}) {
+	// Make sure to set idle to false before returning. This makes sure that an
+	// immediate read on Wait() after MoveTo() actually waits.
 	s.lock.Lock()
 	s.idle = false
 	s.lock.Unlock()
 
-	for d, t := s.delta(updateRate); d != 0; d, t = s.delta(time.Since(t)) {
-		s.lock.Lock()
-		s.position += d
-		s.lock.Unlock()
-		s.rate.Wait(context.Background())
-	}
-	s.lock.Lock()
-	s.position = s.target
-	s.idle = true
-	s.lock.Unlock()
+	// Launch the actual worker and return
+	go func() {
+		for d, t := s.delta(updateRate); d != 0; d, t = s.delta(time.Since(t)) {
+			select {
+			case <-done:
+				s.lock.Lock()
+				s.target = s.position
+				s.idle = true
+				s.lock.Unlock()
 
-	s.finished.L.Lock()
-	s.finished.Broadcast()
-	s.finished.L.Unlock()
+				s.finished.L.Lock()
+				s.finished.Broadcast()
+				s.finished.L.Unlock()
+				break
+			default:
+			}
+
+			s.lock.Lock()
+			s.position += d
+			s.lock.Unlock()
+			s.send()
+
+			s.rate.Wait(context.Background())
+		}
+
+		s.lock.Lock()
+		s.position = s.target
+		s.idle = true
+		s.lock.Unlock()
+
+		s.finished.L.Lock()
+		s.finished.Broadcast()
+		s.finished.L.Unlock()
+	}()
 }
 
 // delta returns the difference between the target and position.
@@ -216,6 +226,14 @@ func (s *Servo) delta(deltaT time.Duration) (float64, time.Time) {
 	}
 
 	return step, t
+}
+
+// send sends the information to blaster.
+func (s *Servo) send() {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	_blaster.set(s.GPIO, remap(s.position, 0, 180, s.minPulse, s.maxPulse))
 }
 
 // isIdle checks if the servo is not moving.
@@ -244,4 +262,8 @@ func clamp(value, min, max float64) float64 {
 		value = max
 	}
 	return value
+}
+
+func remap(value, min, max, toMin, toMax float64) float64 {
+	return (value-min)/(max-min)*(toMax-toMin) + toMin
 }

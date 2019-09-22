@@ -41,9 +41,9 @@ func TestStress(t *testing.T) {
 					tests := []float64{180, 0, 180}
 
 					for _, d := range tests {
-						servos[i].moveTo(d)
 						start := time.Now()
-						servos[i].reach()
+						servos[i].moveTo(d)
+						servos[i].Wait()
 						elapsed := time.Since(start)
 						if elapsed < min || elapsed > max {
 							times = append(times, elapsed)

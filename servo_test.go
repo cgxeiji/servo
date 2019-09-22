@@ -13,6 +13,7 @@ func init() {
 	if hasBlaster() {
 		panic("stop pi-blaster when running tests!")
 	}
+	fmt.Printf("\n^ Ignore the previous warning during tests ^\n\n")
 }
 
 func TestServo(t *testing.T) {
@@ -138,7 +139,7 @@ func TestServo_Reach(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		defer close(done)
-		s.reach()
+		s.Wait()
 	}()
 
 	wg.Add(1)
@@ -168,16 +169,36 @@ func TestServo_Reach(t *testing.T) {
 }
 
 func BenchmarkServo_Reach(b *testing.B) {
-	s, err := Connect(99)
-	if err != nil {
-		b.Fatal(err)
+	n := 100
+	degrees := 2.0
+	servos := make([]*Servo, 0, n)
+
+	for i := 0; i < n; i++ {
+		s, err := Connect(i)
+		if err != nil {
+			b.Fatalf("servos[%d] -> %v", i, err)
+		}
+		servos = append(servos, s)
 	}
 
-	for i := 0; i < b.N; i++ {
-		s.position = 0
-		s.moveTo(1) // should take 3ms at max speed
-		s.reach()
+	var wg sync.WaitGroup
+	wg.Add(n)
+
+	b.Logf("This benchmark should read aprox %.0f ns/op", 0.19/60.0*degrees*float64(time.Second))
+
+	b.ResetTimer()
+	for j := 0; j < n; j++ {
+		go func(j int) {
+			defer wg.Done()
+
+			for i := 0; i < b.N; i++ {
+				servos[j].position = 0
+				servos[j].moveTo(degrees)
+				servos[j].Wait()
+			}
+		}(j)
 	}
+	wg.Wait()
 }
 
 func TestServo_Stop(t *testing.T) {
@@ -193,13 +214,14 @@ func TestServo_Stop(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	wg.Add(2)
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		defer close(done)
-		s.reach()
+		s.Wait()
 	}()
 
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		b := true
@@ -230,23 +252,14 @@ func TestServo_Wait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	done := make(chan struct{})
-
-	var wg sync.WaitGroup
-
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		<-done
-		s.reach()
-	}()
 
 	// Move to 180 degrees and wait until finished.
 	degrees := 180.0
 	s.moveTo(degrees)
-	done <- struct{}{}
 
+	var wg sync.WaitGroup
+
+	wg.Add(1)
 	// Test a concurrent waiter.
 	go func() {
 		defer wg.Done()
