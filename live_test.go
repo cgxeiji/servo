@@ -9,7 +9,7 @@ import (
 )
 
 func init() {
-	if !hasBlaster() {
+	if !HasBlaster() {
 		panic("start pi-blaster before running the live test!")
 	}
 }
@@ -19,10 +19,10 @@ func TestLive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not connect servo to pin 14, got:\n%v", err)
 	}
-	servo.MoveTo(180)
-	servo.Wait()
-	servo.MoveTo(0)
-	servo.MoveTo(90)
-	servo.MoveTo(0)
-	servo.Wait()
+	test.MoveTo(180)
+	test.Wait()
+	test.MoveTo(0)
+	test.MoveTo(90)
+	test.MoveTo(0)
+	test.Wait()
 }
