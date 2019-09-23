@@ -136,7 +136,8 @@ func (b *blaster) send(data string) {
 		w = f
 	}
 
-	fmt.Fprintf(w, "%s", data)
+	fmt.Fprintf(w, "%s\n", data)
+	fmt.Fprintf(os.Stdout, "%s\n", data)
 }
 
 func testPipe() (io.Writer, func() error) {
@@ -164,7 +165,7 @@ func (b *blaster) flush() {
 		return
 	}
 
-	b.buffer <- s.String()
+	b.buffer <- s.String()[1:]
 }
 
 // set sets the data of blaster to a map[gpio] = pwm. It is safe to use
