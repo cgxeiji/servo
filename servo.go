@@ -50,7 +50,7 @@ const (
 
 // Servo is a struct that holds all the information necessary to control a
 // servo motor. Use the function servo.Connect(gpio) for correct
-// initialization.
+// initialization. Servo is designed to be concurrent-safe.
 type Servo struct {
 	// pin is the GPIO pin number of the Raspberry Pi. Check that the pin is
 	// controllable with pi-blaster.
@@ -87,6 +87,13 @@ type Servo struct {
 const updateRate = 3 * time.Millisecond
 
 // String implements the Stringer interface.
+// It returns a string in the following format:
+//
+// servo "NAME" connected to gpio(GPIO_PIN) [flags: ( FLAGS_SET )]
+//
+// where NAME is the verbose name (default: fmt.Sprintf("Servo%d", GPIO)),
+// GPIO_PIN is the connection pin of the servo, and FLAGS_SET is the list of
+// flags set (default: NONE).
 func (s *Servo) String() string {
 	return fmt.Sprintf("servo %q connected to gpio(%d) [flags: %v]", s.Name, s.pin, s.Flags)
 }
@@ -144,7 +151,8 @@ func (s *Servo) Position() float64 {
 
 // MoveTo sets a target angle for the servo to move. The magnitude of the target
 // depends on the servo's Flags. The target is automatically clamped to the set
-// range.
+// range. If called concurrently, the target position is overridden by the last
+// goroutine (usually non-deterministic).
 func (s *Servo) MoveTo(target float64) {
 	s.moveTo(target)
 }
@@ -267,7 +275,7 @@ func (s *Servo) isIdle() bool {
 	return s.idle
 }
 
-// Wait waits for the servo to stop moving.
+// Wait waits for the servo to stop moving. It is concurrent-safe.
 func (s *Servo) Wait() {
 	s.finished.L.Lock()
 	defer s.finished.L.Unlock()
