@@ -2,7 +2,6 @@ package servo
 
 import (
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -17,7 +16,6 @@ type blaster struct {
 	done     chan struct{}
 	servos   chan gpioPWM
 
-	file io.Writer
 	rate time.Duration
 }
 
@@ -37,7 +35,6 @@ func init() {
 		done:   make(chan struct{}),
 		servos: make(chan gpioPWM),
 		rate:   40 * time.Millisecond,
-		file:   ioutil.Discard,
 	}
 
 	if err := _blaster.start(); err != nil {
@@ -82,17 +79,6 @@ func (b *blaster) start() error {
 		return errPiBlasterNotFound
 	}
 
-	if !b.disabled {
-		const pipepath = "/dev/pi-blaster"
-		f, err := os.OpenFile(pipepath,
-			os.O_WRONLY, os.ModeNamedPipe)
-		if err != nil {
-			panic(err)
-		}
-		defer f.Close()
-		b.file = f
-	}
-
 	b.manager(b.done, time.NewTicker(b.rate).C)
 
 	return nil
@@ -113,7 +99,7 @@ func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
 				data[servo.gpio] = servo.pwm
 			case <-flushCh:
 				if len(data) != 0 {
-					flush(b.file, data)
+					b.flush(data)
 					data = make(map[gpio]pwm)
 				}
 			}
@@ -143,7 +129,20 @@ func (b *blaster) set(gpio gpio, pwm pwm) {
 
 // flush parses the data into "PIN=PWM PIN=PWM" format and sends it to
 // the designited io.Writer.
-func flush(w io.Writer, data map[gpio]pwm) {
+func (b *blaster) flush(data map[gpio]pwm) {
+	w := ioutil.Discard
+
+	if !b.disabled {
+		const pipepath = "/dev/pi-blaster"
+		f, err := os.OpenFile(pipepath,
+			os.O_WRONLY, os.ModeNamedPipe)
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+		w = f
+	}
+
 	s := new(strings.Builder)
 
 	for pin, pwm := range data {
@@ -155,5 +154,5 @@ func flush(w io.Writer, data map[gpio]pwm) {
 	}
 
 	fmt.Fprintf(w, "%s\n", s)
-	//fmt.Fprintf(os.Stdout, "%s\n", s)
+	fmt.Fprintf(os.Stdout, "%s\n", s)
 }
