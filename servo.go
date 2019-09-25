@@ -52,12 +52,12 @@ const (
 // servo motor. Use the function servo.Connect(gpio) for correct
 // initialization.
 type Servo struct {
-	// GPIO is the GPIO pin number of the Raspberry Pi. Check that the pin is
+	// pin is the GPIO pin number of the Raspberry Pi. Check that the pin is
 	// controllable with pi-blaster.
 	//
 	// CAUTION: Incorrect pin assignment might cause damage to your Raspberry
 	// Pi.
-	GPIO gpio
+	pin gpio
 	// Name is an optional value to assign a meaningful name to the servo.
 	Name string
 	// Flags is a bit flag that sets various configuration parameters.
@@ -88,7 +88,7 @@ const updateRate = 3 * time.Millisecond
 
 // String implements the Stringer interface.
 func (s *Servo) String() string {
-	return fmt.Sprintf("servo %q connected to gpio(%d) [flags: %v]", s.Name, s.GPIO, s.Flags)
+	return fmt.Sprintf("servo %q connected to gpio(%d) [flags: %v]", s.Name, s.pin, s.Flags)
 }
 
 // Connect defines a new servo connected at a GPIO pin of the Raspberry Pi. Check that the pin is
@@ -100,7 +100,7 @@ func Connect(GPIO int) (*Servo, error) {
 	const maxS = 315.7
 
 	s := &Servo{
-		GPIO:     gpio(GPIO),
+		pin:      gpio(GPIO),
 		Name:     fmt.Sprintf("Servo%d", GPIO),
 		maxStep:  maxS,
 		step:     maxS,
@@ -123,7 +123,7 @@ func Connect(GPIO int) (*Servo, error) {
 // GPIO pin.
 func (s *Servo) Close() {
 	close(s.done)
-	_blaster.set(s.GPIO, 0.0)
+	_blaster.set(s.pin, 0.0)
 }
 
 // Position returns the current angle of the servo, adjusted for its Flags.
@@ -256,7 +256,7 @@ func (s *Servo) send() {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	_blaster.set(s.GPIO, pwm(remap(s.position, 0, 180, s.minPulse, s.maxPulse)))
+	_blaster.set(s.pin, pwm(remap(s.position, 0, 180, s.minPulse, s.maxPulse)))
 }
 
 // isIdle checks if the servo is not moving.

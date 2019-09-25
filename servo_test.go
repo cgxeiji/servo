@@ -36,8 +36,8 @@ func TestConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if s.GPIO != gpio {
-		t.Errorf("GPIO does not match, got: %d, want: %d", s.GPIO, gpio)
+	if s.pin != gpio {
+		t.Errorf("GPIO does not match, got: %d, want: %d", s.pin, gpio)
 	}
 	name := fmt.Sprintf("Servo%d", gpio)
 	if s.Name != name {
