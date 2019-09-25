@@ -8,28 +8,37 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"sync"
 	"time"
 )
 
 type blaster struct {
 	disabled bool
 	buffer   chan string
-	data     chan map[int]float64
 	done     chan struct{}
-	rate     time.Duration
+	servos   chan gpioPWM
+
+	file io.Writer
+	rate time.Duration
 }
 
 var _blaster *blaster
 
+type gpio int
+type pwm float64
+
+type gpioPWM struct {
+	gpio gpio
+	pwm  pwm
+}
+
 func init() {
 	_blaster = &blaster{
 		buffer: make(chan string),
-		data:   make(chan map[int]float64, 1),
 		done:   make(chan struct{}),
+		servos: make(chan gpioPWM),
 		rate:   40 * time.Millisecond,
+		file:   ioutil.Discard,
 	}
-	_blaster.data <- make(map[int]float64)
 
 	if err := _blaster.start(); err != nil {
 		if err == errPiBlasterNotFound {
@@ -73,34 +82,43 @@ func (b *blaster) start() error {
 		return errPiBlasterNotFound
 	}
 
-	var started sync.WaitGroup
-	started.Add(2)
-	go func() {
-		started.Done()
-		for {
-			select {
-			case data := <-b.buffer:
-				b.send(data)
-			case <-b.done:
-				return
-			}
+	if !b.disabled {
+		const pipepath = "/dev/pi-blaster"
+		f, err := os.OpenFile(pipepath,
+			os.O_WRONLY, os.ModeNamedPipe)
+		if err != nil {
+			panic(err)
 		}
-	}()
-	go func() {
-		t := time.NewTicker(b.rate)
-		started.Done()
-		for {
-			select {
-			case <-t.C:
-				b.flush()
-			case <-b.done:
-				return
-			}
-		}
-	}()
+		defer f.Close()
+		b.file = f
+	}
 
-	started.Wait()
+	b.manager(b.done, time.NewTicker(b.rate).C)
+
 	return nil
+}
+
+// manager keeps track of changes to servos and flushes the data to pi-blaster
+// given the flushCh signal. The flush will happen only if there was a change
+// in the servos data. Everytime the data is flushed, the variable is emptied.
+func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
+	data := make(map[gpio]pwm)
+
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case servo := <-b.servos:
+				data[servo.gpio] = servo.pwm
+			case <-flushCh:
+				if len(data) != 0 {
+					flush(b.file, data)
+					data = make(map[gpio]pwm)
+				}
+			}
+		}
+	}()
 }
 
 // Close cleans up the servo package. Make sure to call this in your main
@@ -109,7 +127,7 @@ func Close() {
 	if _blaster == nil {
 		return
 	}
-	close(_blaster.done)
+	_blaster.close()
 }
 
 // close stops blaster if it was started.
@@ -117,61 +135,25 @@ func (b *blaster) close() {
 	close(b.done)
 }
 
-// send writes data to /dev/pi-blaster. If NoPiBlaster was called, the output
-// is written to ioutil.Discard.
-func (b *blaster) send(data string) {
-	const blasterFile = "/dev/pi-blaster"
-
-	w := ioutil.Discard
-	//w, C := testPipe()
-	//defer C()
-
-	if !b.disabled {
-		f, err := os.OpenFile(blasterFile,
-			os.O_WRONLY, os.ModeNamedPipe)
-		if err != nil {
-			panic(err)
-		}
-		defer f.Close()
-		w = f
-	}
-
-	fmt.Fprintf(w, "%s\n", data)
-	fmt.Fprintf(os.Stdout, "%s\n", data)
-}
-
-func testPipe() (io.Writer, func() error) {
-	f, err := os.OpenFile("test.log",
-		os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0777)
-	if err != nil {
-		panic(err)
-	}
-
-	return f, f.Close
+// set sets the data of blaster to a map[gpio] = pwm. It is safe to use
+// concurrently.
+func (b *blaster) set(gpio gpio, pwm pwm) {
+	b.servos <- gpioPWM{gpio, pwm}
 }
 
 // flush parses the data into "PIN=PWM PIN=PWM" format and sends it to
-// pi-blaster. It is safe to use concurrently.
-func (b *blaster) flush() {
+// the designited io.Writer.
+func flush(w io.Writer, data map[gpio]pwm) {
 	s := new(strings.Builder)
 
-	data := <-b.data
 	for pin, pwm := range data {
-		fmt.Fprintf(s, " %d=%.2f ", pin, pwm)
+		fmt.Fprintf(s, " %d=%.2f", pin, pwm)
 	}
-	b.data <- data
 
 	if s.Len() == 0 {
 		return
 	}
 
-	b.buffer <- s.String()[1:]
-}
-
-// set sets the data of blaster to a map[gpio] = pwm. It is safe to use
-// concurrently.
-func (b *blaster) set(gpio int, pwm float64) {
-	data := <-b.data
-	data[gpio] = pwm
-	b.data <- data
+	fmt.Fprintf(w, "%s\n", s)
+	//fmt.Fprintf(os.Stdout, "%s\n", s)
 }

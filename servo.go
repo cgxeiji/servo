@@ -57,7 +57,7 @@ type Servo struct {
 	//
 	// CAUTION: Incorrect pin assignment might cause damage to your Raspberry
 	// Pi.
-	GPIO int
+	GPIO gpio
 	// Name is an optional value to assign a meaningful name to the servo.
 	Name string
 	// Flags is a bit flag that sets various configuration parameters.
@@ -96,14 +96,16 @@ func (s *Servo) String() string {
 //
 // CAUTION: Incorrect pin assignment might cause damage to your Raspberry
 // Pi.
-func Connect(gpio int) (*Servo, error) {
+func Connect(GPIO int) (*Servo, error) {
 	const maxS = 315.7
 
 	s := &Servo{
-		GPIO:    gpio,
-		Name:    fmt.Sprintf("Servo%d", gpio),
-		maxStep: maxS,
-		step:    maxS,
+		GPIO:     gpio(GPIO),
+		Name:     fmt.Sprintf("Servo%d", GPIO),
+		maxStep:  maxS,
+		step:     maxS,
+		minPulse: 0.05,
+		maxPulse: 0.25,
 
 		idle:     true,
 		finished: sync.NewCond(&sync.Mutex{}),
@@ -233,7 +235,7 @@ func (s *Servo) send() {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	_blaster.set(s.GPIO, remap(s.position, 0, 180, s.minPulse, s.maxPulse))
+	_blaster.set(s.GPIO, pwm(remap(s.position, 0, 180, s.minPulse, s.maxPulse)))
 }
 
 // isIdle checks if the servo is not moving.
