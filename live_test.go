@@ -31,7 +31,7 @@ func TestLive(t *testing.T) {
 	test.Wait()
 	elapsed := time.Since(start)
 
-	_t := time.Duration(degrees/315.7*1000) * time.Millisecond
+	_t := time.Duration(180/315.7*1000) * time.Millisecond
 	const tolerance = 50 * time.Millisecond
 	min := _t - tolerance
 	max := _t + tolerance
