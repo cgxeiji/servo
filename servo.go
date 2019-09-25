@@ -119,6 +119,13 @@ func Connect(GPIO int) (*Servo, error) {
 	return s, nil
 }
 
+// Close cleans up the state of the servo and deactivates the corresponding
+// GPIO pin.
+func (s *Servo) Close() {
+	close(s.done)
+	_blaster.set(s.GPIO, 0.0)
+}
+
 // Position returns the current angle of the servo, adjusted for its Flags.
 func (s *Servo) Position() float64 {
 	s.lock.RLock()
@@ -151,11 +158,26 @@ func (s *Servo) moveTo(target float64) {
 	}
 
 	s.lock.Lock()
-	s.target = clamp(target, 0, 180)
+	if s.step == 0.0 {
+		s.target = s.position
+	} else {
+		s.target = clamp(target, 0, 180)
+	}
 	s.lock.Unlock()
 	if s.isIdle() {
 		s.reach(s.done)
 	}
+}
+
+// Speed changes the speed of the servo from (still) 0.0 to 1.0 (max speed).
+// Setting a speed of 0.0 effectively sets the target position to the current
+// position and the servo will not move.
+func (s *Servo) Speed(percentage float64) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	percentage = clamp(percentage, 0.0, 1.0)
+	s.step = s.maxStep * percentage
 }
 
 // Stop stops moving the servo. This effectively sets the target position to
@@ -177,6 +199,12 @@ func (s *Servo) reach(done <-chan struct{}) {
 
 	// Launch the actual worker and return
 	go func() {
+		defer func() {
+			s.finished.L.Lock()
+			s.finished.Broadcast()
+			s.finished.L.Unlock()
+		}()
+
 		for d, t := s.delta(updateRate); d != 0; d, t = s.delta(time.Since(t)) {
 			select {
 			case <-done:
@@ -185,29 +213,22 @@ func (s *Servo) reach(done <-chan struct{}) {
 				s.idle = true
 				s.lock.Unlock()
 
-				s.finished.L.Lock()
-				s.finished.Broadcast()
-				s.finished.L.Unlock()
 				break
 			default:
 			}
+
+			s.rate.Wait(context.Background())
 
 			s.lock.Lock()
 			s.position += d
 			s.lock.Unlock()
 			s.send()
-
-			s.rate.Wait(context.Background())
 		}
 
 		s.lock.Lock()
 		s.position = s.target
 		s.idle = true
 		s.lock.Unlock()
-
-		s.finished.L.Lock()
-		s.finished.Broadcast()
-		s.finished.L.Unlock()
 	}()
 }
 

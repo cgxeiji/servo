@@ -4,7 +4,7 @@ package servo_test
 
 import (
 	"testing"
-	"fmt"
+	"time"
 
 	"github.com/cgxeiji/servo"
 )
@@ -20,23 +20,37 @@ func TestLive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not connect servo to pin 14, got:\n%v", err)
 	}
-	fmt.Println("Servo connected")
+	defer func() {
+		test.MoveTo(90)
+		test.Wait()
+		test.Close()
+	}()
+
 	test.MoveTo(180)
-	fmt.Println("moving to 180")
+	start := time.Now()
 	test.Wait()
-	fmt.Println("finished!")
+	elapsed := time.Since(start)
+
+	_t := time.Duration(degrees/315.7*1000) * time.Millisecond
+	const tolerance = 50 * time.Millisecond
+	min := _t - tolerance
+	max := _t + tolerance
+
+	if elapsed < min || elapsed > max {
+		t.Errorf("it should take between %v and %v to move %.2f degrees, got: %v", min, max, 180, elapsed)
+	}
 	if test.Position() != 180 {
 		t.Errorf("servo position got: %.2f, want: %.2f", test.Position(), 180.0)
 	}
+
+	time.Sleep(500 * time.Millisecond)
+
 	test.MoveTo(0)
-	fmt.Println("moving to 0")
 	test.MoveTo(90)
-	fmt.Println("moving to 90")
 	test.MoveTo(0)
-	fmt.Println("moving to 0")
 	test.Wait()
-	fmt.Println("finished!")
 	if test.Position() != 0 {
 		t.Errorf("servo position got: %.2f, want: %.2f", test.Position(), 0.0)
 	}
+	time.Sleep(500 * time.Millisecond)
 }

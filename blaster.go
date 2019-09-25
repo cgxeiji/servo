@@ -154,5 +154,5 @@ func (b *blaster) flush(data map[gpio]pwm) {
 	}
 
 	fmt.Fprintf(w, "%s\n", s)
-	fmt.Fprintf(os.Stdout, "%s\n", s)
+	//fmt.Fprintf(os.Stdout, "%s\n", s)
 }
