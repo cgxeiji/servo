@@ -2,6 +2,9 @@
 
 Servo is a Go library to control servo motors on a Raspberry Pi using pi-blaster.
 
+## NOT READY YET
+---
+
 ## DISCLAIMER
 
 > **This library controls physical pins of a Raspberry Pi using pi-blaster.
@@ -16,11 +19,13 @@ Servo is a Go library to control servo motors on a Raspberry Pi using pi-blaster
 ## About the library
 
 This library facilitates the use of
-[pi-blaster](https://github.com/sarfata/pi-blaster) to control servo motors on a
-Raspberry Pi. Under the hood, it opens a pipeline to `/dev/pi-blaster` and
+[pi-blaster](https://github.com/sarfata/pi-blaster) to control servo motors on
+a Raspberry Pi. Under the hood, it opens a pipeline to `/dev/pi-blaster` and
 sends commands in the format `GPIO=PWM`. The library calculates the appropriate
 PWM based on the speed and position of the servo and groups the writes to
-`/dev/pi-blaster` if multiple servos are connected.
+`/dev/pi-blaster` if multiple servos are connected. You can check the
+[documentation](https://godoc.org/github.com/cgxeiji/servo) for more detailed
+information.
 
 Each connected servo is managed independently from one another and is designed
 to be concurrent-safe.
