@@ -146,7 +146,7 @@ func (b *blaster) flush(data map[gpio]pwm) {
 	s := new(strings.Builder)
 
 	for pin, pwm := range data {
-		fmt.Fprintf(s, " %d=%.2f", pin, pwm)
+		fmt.Fprintf(s, " %d=%.6f", pin, pwm)
 	}
 
 	if s.Len() == 0 {
