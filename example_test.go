@@ -7,6 +7,7 @@ import (
 )
 
 func Example() {
+	defer servo.Close()
 	// For example, start pi-blaster as:
 	// $ sudo pi-blaster --gpio 14 --pcm
 	servo1, err := servo.Connect(14)

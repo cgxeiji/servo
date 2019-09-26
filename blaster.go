@@ -118,6 +118,7 @@ func Close() {
 
 // close stops blaster if it was started.
 func (b *blaster) close() {
+	b.write("*=0\n")
 	close(b.done)
 }
 
@@ -127,9 +128,23 @@ func (b *blaster) set(gpio gpio, pwm pwm) {
 	b.servos <- gpioPWM{gpio, pwm}
 }
 
-// flush parses the data into "PIN=PWM PIN=PWM" format and sends it to
-// the designited io.Writer.
+// flush parses the data into "PIN=PWM PIN=PWM" format.
 func (b *blaster) flush(data map[gpio]pwm) {
+	s := new(strings.Builder)
+
+	for pin, pwm := range data {
+		fmt.Fprintf(s, " %d=%.6f", pin, pwm)
+	}
+
+	if s.Len() == 0 {
+		return
+	}
+
+	b.write(s.String())
+}
+
+// write sends a string s to the designated io.Writer.
+func (b *blaster) write(s string) {
 	w := ioutil.Discard
 
 	if !b.disabled {
@@ -141,16 +156,6 @@ func (b *blaster) flush(data map[gpio]pwm) {
 		}
 		defer f.Close()
 		w = f
-	}
-
-	s := new(strings.Builder)
-
-	for pin, pwm := range data {
-		fmt.Fprintf(s, " %d=%.6f", pin, pwm)
-	}
-
-	if s.Len() == 0 {
-		return
 	}
 
 	fmt.Fprintf(w, "%s\n", s)
