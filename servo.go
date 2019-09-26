@@ -130,7 +130,7 @@ func Connect(GPIO int) (*Servo, error) {
 // GPIO pin.
 func (s *Servo) Close() {
 	close(s.done)
-	_blaster.set(s.pin, 0.0)
+	_blaster.write(fmt.Sprintf("%d=%.2f", s.pin, 0.0))
 }
 
 // Position returns the current angle of the servo, adjusted for its Flags.

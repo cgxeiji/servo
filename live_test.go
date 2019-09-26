@@ -21,6 +21,7 @@ func TestLive(t *testing.T) {
 		t.Fatalf("Could not connect servo to pin 14, got:\n%v", err)
 	}
 	defer func() {
+		test.Speed(0.05)
 		test.MoveTo(90)
 		test.Wait()
 		test.Close()
@@ -44,7 +45,7 @@ func TestLive(t *testing.T) {
 	}
 
 	time.Sleep(500 * time.Millisecond)
-	test.Speed(0.1)
+	test.Speed(0.5)
 
 	test.MoveTo(0)
 	test.MoveTo(90)
