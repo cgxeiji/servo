@@ -71,8 +71,9 @@ type Servo struct {
 	// These calibration variables should be immutables once initialized.
 	minPulse, maxPulse float64
 
-	target, position float64
-	done             chan struct{}
+	start, target, position float64
+	done                    chan struct{}
+	startT                  time.Time
 
 	step, maxStep float64
 
@@ -84,7 +85,7 @@ type Servo struct {
 }
 
 // updateRate is set to 3ms/degree, an approximate on 0.19s/60degrees.
-const updateRate = 3 * time.Millisecond
+const updateRate = 10 * time.Millisecond
 
 // String implements the Stringer interface.
 // It returns a string in the following format:
@@ -171,6 +172,8 @@ func (s *Servo) moveTo(target float64) {
 	} else {
 		s.target = clamp(target, 0, 180)
 	}
+	s.start = s.position
+	s.startT = time.Now()
 	s.lock.Unlock()
 	if s.isIdle() {
 		s.reach(s.done)
@@ -197,7 +200,7 @@ func (s *Servo) Stop() {
 	s.target = s.position
 }
 
-// reach tries to reach the assigned target.
+// reach2 tries to reach the assigned target.
 func (s *Servo) reach(done <-chan struct{}) {
 	// Make sure to set idle to false before returning. This makes sure that an
 	// immediate read on Wait() after MoveTo() actually waits.
@@ -212,8 +215,7 @@ func (s *Servo) reach(done <-chan struct{}) {
 			s.finished.Broadcast()
 			s.finished.L.Unlock()
 		}()
-
-		for d, t := s.delta(updateRate); d != 0; d, t = s.delta(time.Since(t)) {
+		for angle, ok := s.angle(); ok; angle, ok = s.angle() {
 			select {
 			case <-done:
 				s.lock.Lock()
@@ -228,7 +230,7 @@ func (s *Servo) reach(done <-chan struct{}) {
 			s.rate.Wait(context.Background())
 
 			s.lock.Lock()
-			s.position += d
+			s.position = angle
 			s.lock.Unlock()
 			s.send()
 		}
@@ -240,23 +242,32 @@ func (s *Servo) reach(done <-chan struct{}) {
 	}()
 }
 
-// delta returns the difference between the target and position.
-func (s *Servo) delta(deltaT time.Duration) (float64, time.Time) {
-	t := time.Now()
-
+// angle linearly interpolates an angle based on the start, finish, and
+// duration of the movement, and returns the angle and a boolean check if the
+// last operation was in a valid time range.
+func (s *Servo) angle() (float64, bool) {
 	s.lock.RLock()
-	step := s.step * deltaT.Seconds()
-	d := s.target - s.position
-	s.lock.RUnlock()
+	defer s.lock.RUnlock()
 
-	if d <= step {
-		if -d <= step {
-			return 0, t
-		}
-		return -step, t
+	if s.position == s.target {
+		return s.target, false
 	}
 
-	return step, t
+	delta := time.Since(s.startT).Seconds() * s.step
+	if s.target < s.start {
+		angle := s.start - delta
+		if angle <= s.target {
+			return s.target, false
+		}
+		return angle, true
+	}
+
+	angle := s.start + delta
+	if angle >= s.target {
+		return s.target, false
+	}
+
+	return angle, true
 }
 
 // send sends the information to blaster.
