@@ -1,3 +1,5 @@
+//+build !live
+
 package servo_test
 
 import (

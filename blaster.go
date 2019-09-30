@@ -118,7 +118,7 @@ func Close() {
 
 // close stops blaster if it was started.
 func (b *blaster) close() {
-	b.write("*=0\n")
+	b.write("*=0.0")
 	close(b.done)
 }
 
