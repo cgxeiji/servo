@@ -131,6 +131,7 @@ func Connect(GPIO int) (*Servo, error) {
 // Close cleans up the state of the servo and deactivates the corresponding
 // GPIO pin.
 func (s *Servo) Close() {
+	_blaster.unsubscribe(s)
 	close(s.done)
 	_blaster.write(fmt.Sprintf("%d=%.2f", s.pin, 0.0))
 }
