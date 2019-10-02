@@ -1,7 +1,6 @@
 package servo
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -85,7 +84,7 @@ type Servo struct {
 }
 
 // updateRate is set to 3ms/degree, an approximate on 0.19s/60degrees.
-const updateRate = 10 * time.Millisecond
+const updateRate = 3 * time.Millisecond
 
 // String implements the Stringer interface.
 // It returns a string in the following format:
@@ -123,6 +122,8 @@ func Connect(GPIO int) (*Servo, error) {
 
 		rate: rate.NewLimiter(rate.Every(updateRate), 1),
 	}
+
+	_blaster.subscribe(s)
 
 	return s, nil
 }
@@ -167,6 +168,8 @@ func (s *Servo) moveTo(target float64) {
 	}
 
 	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	if s.step == 0.0 {
 		s.target = s.position
 	} else {
@@ -174,10 +177,7 @@ func (s *Servo) moveTo(target float64) {
 	}
 	s.start = s.position
 	s.startT = time.Now()
-	s.lock.Unlock()
-	if s.isIdle() {
-		s.reach(s.done)
-	}
+	s.idle = false
 }
 
 // Speed changes the speed of the servo from (still) 0.0 to 1.0 (max speed).
@@ -200,53 +200,27 @@ func (s *Servo) Stop() {
 	s.target = s.position
 }
 
-// reach2 tries to reach the assigned target.
-func (s *Servo) reach(done <-chan struct{}) {
-	// Make sure to set idle to false before returning. This makes sure that an
-	// immediate read on Wait() after MoveTo() actually waits.
-	s.lock.Lock()
-	s.idle = false
-	s.lock.Unlock()
-
-	// Launch the actual worker and return
-	go func() {
-		defer func() {
-			s.finished.L.Lock()
-			s.finished.Broadcast()
-			s.finished.L.Unlock()
-		}()
-		for angle, ok := s.angle(); ok; angle, ok = s.angle() {
-			select {
-			case <-done:
-				s.lock.Lock()
-				s.target = s.position
-				s.idle = true
-				s.lock.Unlock()
-
-				break
-			default:
-			}
-
-			s.rate.Wait(context.Background())
-
-			s.lock.Lock()
-			s.position = angle
-			s.lock.Unlock()
-			s.send()
-		}
-
-		s.lock.Lock()
-		s.position = s.target
-		s.idle = true
-		s.lock.Unlock()
-	}()
-}
-
 // angle linearly interpolates an angle based on the start, finish, and
 // duration of the movement, and returns the angle and a boolean check if the
 // last operation was in a valid time range.
-func (s *Servo) angle() (float64, bool) {
+func (s *Servo) angle() (angle float64, ok bool) {
 	s.lock.RLock()
+	defer func() {
+		if !ok {
+			s.lock.Lock()
+			s.position = s.target
+			s.idle = true
+			s.lock.Unlock()
+
+			s.finished.L.Lock()
+			s.finished.Broadcast()
+			s.finished.L.Unlock()
+		} else {
+			s.lock.Lock()
+			s.position = angle
+			s.lock.Unlock()
+		}
+	}()
 	defer s.lock.RUnlock()
 
 	if s.position == s.target {
@@ -262,7 +236,7 @@ func (s *Servo) angle() (float64, bool) {
 		return angle, true
 	}
 
-	angle := s.start + delta
+	angle = s.start + delta
 	if angle >= s.target {
 		return s.target, false
 	}
@@ -276,6 +250,12 @@ func (s *Servo) send() {
 	defer s.lock.RUnlock()
 
 	_blaster.set(s.pin, pwm(remap(s.position, 0, 180, s.minPulse, s.maxPulse)))
+}
+
+// pwm returns the gpio and pwm.
+func (s *Servo) pwm() (gpio, pwm) {
+	a, _ := s.angle()
+	return s.pin, pwm(remap(a, 0, 180, s.minPulse, s.maxPulse))
 }
 
 // isIdle checks if the servo is not moving.

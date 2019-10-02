@@ -15,6 +15,7 @@ type blaster struct {
 	buffer   chan string
 	done     chan struct{}
 	servos   chan gpioPWM
+	_servos  []*Servo
 
 	rate time.Duration
 }
@@ -98,6 +99,10 @@ func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
 			case servo := <-b.servos:
 				data[servo.gpio] = servo.pwm
 			case <-flushCh:
+				for _, servo := range b._servos {
+					pin, pwm := servo.pwm()
+					data[pin] = pwm
+				}
 				if len(data) != 0 {
 					b.flush(data)
 					data = make(map[gpio]pwm)
@@ -105,6 +110,11 @@ func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
 			}
 		}
 	}()
+}
+
+// subscribe adds a Servo reference to the manager.
+func (b *blaster) subscribe(servo *Servo) {
+	b._servos = append(b._servos, servo)
 }
 
 // Close cleans up the servo package. Make sure to call this in your main
