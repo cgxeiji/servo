@@ -14,7 +14,7 @@ type blaster struct {
 	disabled bool
 	buffer   chan string
 	done     chan struct{}
-	servos   chan gpioPWM
+	servos   chan servoPkg
 	_servos  map[gpio]*Servo
 
 	rate time.Duration
@@ -25,16 +25,16 @@ var _blaster *blaster
 type gpio int
 type pwm float64
 
-type gpioPWM struct {
-	gpio gpio
-	pwm  pwm
+type servoPkg struct {
+	servo *Servo
+	add   bool
 }
 
 func init() {
 	_blaster = &blaster{
 		buffer:  make(chan string),
 		done:    make(chan struct{}),
-		servos:  make(chan gpioPWM),
+		servos:  make(chan servoPkg),
 		rate:    40 * time.Millisecond,
 		_servos: make(map[gpio]*Servo),
 	}
@@ -97,8 +97,13 @@ func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
 			select {
 			case <-done:
 				return
-			case servo := <-b.servos:
-				data[servo.gpio] = servo.pwm
+			case pkg := <-b.servos:
+				servo := pkg.servo
+				if pkg.add {
+					b._servos[servo.pin] = servo
+				} else {
+					delete(b._servos, servo.pin)
+				}
 			case <-flushCh:
 				for _, servo := range b._servos {
 					pin, pwm := servo.pwm()
@@ -115,12 +120,12 @@ func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
 
 // subscribe adds a Servo reference to the manager.
 func (b *blaster) subscribe(servo *Servo) {
-	b._servos[servo.pin] = servo
+	b.servos <- servoPkg{servo, true}
 }
 
 // unsubscribe removes a Servo reference from the manager.
 func (b *blaster) unsubscribe(servo *Servo) {
-	delete(b._servos, servo.pin)
+	b.servos <- servoPkg{servo, false}
 }
 
 // Close cleans up the servo package. Make sure to call this in your main
@@ -136,12 +141,6 @@ func Close() {
 func (b *blaster) close() {
 	b.write("*=0.0")
 	close(b.done)
-}
-
-// set sets the data of blaster to a map[gpio] = pwm. It is safe to use
-// concurrently.
-func (b *blaster) set(gpio gpio, pwm pwm) {
-	b.servos <- gpioPWM{gpio, pwm}
 }
 
 // flush parses the data into "PIN=PWM PIN=PWM" format.

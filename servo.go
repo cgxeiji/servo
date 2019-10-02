@@ -245,14 +245,6 @@ func (s *Servo) angle() (angle float64, ok bool) {
 	return angle, true
 }
 
-// send sends the information to blaster.
-func (s *Servo) send() {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-
-	_blaster.set(s.pin, pwm(remap(s.position, 0, 180, s.minPulse, s.maxPulse)))
-}
-
 // pwm returns the gpio and pwm.
 func (s *Servo) pwm() (gpio, pwm) {
 	a, _ := s.angle()
