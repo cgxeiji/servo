@@ -22,6 +22,7 @@ func initServo(t *testing.T) *servo.Servo {
 
 func TestExportConnect(t *testing.T) {
 	s := initServo(t)
+	defer s.Close()
 
 	want := `servo "Tester" connected to gpio(99) [flags: ( NONE )]`
 	got := s.String()
@@ -33,6 +34,7 @@ func TestExportConnect(t *testing.T) {
 
 func TestExportServo_MoveTo(t *testing.T) {
 	s := initServo(t)
+	defer s.Close()
 
 	var wg sync.WaitGroup
 

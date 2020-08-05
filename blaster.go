@@ -35,7 +35,7 @@ func init() {
 		buffer:  make(chan string),
 		done:    make(chan struct{}),
 		servos:  make(chan servoPkg),
-		rate:    40 * time.Millisecond,
+		rate:    20 * time.Millisecond,
 		_servos: make(map[gpio]*Servo),
 	}
 

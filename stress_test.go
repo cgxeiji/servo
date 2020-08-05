@@ -26,6 +26,7 @@ func TestStress(t *testing.T) {
 				if err != nil {
 					t.Fatalf("servos[%d] -> %v", i, err)
 				}
+				defer s.Close()
 				servos = append(servos, s)
 			}
 

@@ -11,7 +11,8 @@ import (
 
 func init() {
 	if hasBlaster() {
-		panic("stop pi-blaster when running tests!")
+		fmt.Println("ignoring pi-blaster")
+		noPiBlaster()
 	}
 	fmt.Printf("\n^ Ignore the previous warning during tests ^\n\n")
 }
@@ -35,6 +36,7 @@ func TestConnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer s.Close()
 
 	if s.pin != gpio {
 		t.Errorf("GPIO does not match, got: %d, want: %d", s.pin, gpio)
@@ -50,6 +52,7 @@ func TestServo_Position(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer s.Close()
 
 	const want = 59.6
 	s.position = want
@@ -96,6 +99,7 @@ func TestServo_MoveTo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer s.Close()
 
 	for input, want := range tests {
 		s.moveTo(input)
@@ -127,6 +131,7 @@ func TestServo_Reach(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer s.Close()
 	done := make(chan struct{})
 
 	// Move to 180 degrees, but override concurrently to 0 when it reaches 110
@@ -178,6 +183,7 @@ func BenchmarkServo_Reach(b *testing.B) {
 		if err != nil {
 			b.Fatalf("servos[%d] -> %v", i, err)
 		}
+		defer s.Close()
 		servos = append(servos, s)
 	}
 
@@ -201,11 +207,39 @@ func BenchmarkServo_Reach(b *testing.B) {
 	wg.Wait()
 }
 
+func BenchmarkServo_PWM(b *testing.B) {
+	servo, err := Connect(1)
+	if err != nil {
+		b.Fatalf("%v -> %v", servo, err)
+	}
+	defer servo.Close()
+
+	servo.position = 0
+	servo.moveTo(180)
+
+	var wg sync.WaitGroup
+	wg.Add(100)
+
+	b.ResetTimer()
+	for j := 0; j < 100; j++ {
+		go func(j int) {
+			defer wg.Done()
+
+			for i := 0; i < b.N; i++ {
+				servo.pwm()
+			}
+		}(j)
+	}
+	wg.Wait()
+
+}
+
 func TestServo_Stop(t *testing.T) {
 	s, err := Connect(99)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer s.Close()
 	done := make(chan struct{})
 
 	// Move to 180 degrees, but override concurrently to 0 when it reaches 110
@@ -252,6 +286,7 @@ func TestServo_Wait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer s.Close()
 
 	// Move to 180 degrees and wait until finished.
 	degrees := 180.0

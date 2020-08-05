@@ -5,8 +5,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/time/rate"
 )
 
 type flag uint8
@@ -69,6 +67,7 @@ type Servo struct {
 
 	// These calibration variables should be immutables once initialized.
 	minPulse, maxPulse float64
+	lastPWM            pwm
 
 	start, target, position float64
 	done                    chan struct{}
@@ -79,12 +78,9 @@ type Servo struct {
 	idle     bool
 	finished *sync.Cond
 	lock     *sync.RWMutex
-
-	rate *rate.Limiter
 }
 
 // updateRate is set to 3ms/degree, an approximate on 0.19s/60degrees.
-const updateRate = 3 * time.Millisecond
 
 // String implements the Stringer interface.
 // It returns a string in the following format:
@@ -119,8 +115,6 @@ func Connect(GPIO int) (*Servo, error) {
 		lock:     new(sync.RWMutex),
 
 		done: make(chan struct{}),
-
-		rate: rate.NewLimiter(rate.Every(updateRate), 1),
 	}
 
 	_blaster.subscribe(s)
@@ -199,56 +193,59 @@ func (s *Servo) Stop() {
 	defer s.lock.Unlock()
 
 	s.target = s.position
+	s.idle = true
+	s.finished.L.Lock()
+	s.finished.Broadcast()
+	s.finished.L.Unlock()
 }
 
-// angle linearly interpolates an angle based on the start, finish, and
-// duration of the movement, and returns the angle and a boolean check if the
-// last operation was in a valid time range.
-func (s *Servo) angle() (angle float64, ok bool) {
+// pwm linearly interpolates an angle based on the start, finish, and
+// duration of the movement, and returns the gpio pin and adjusted pwm for the
+// current time.
+func (s *Servo) pwm() (gpio, pwm) {
+	ok := false
 	s.lock.RLock()
+	p := s.position
+	_pwm := s.lastPWM
+
 	defer func() {
 		if !ok {
 			s.lock.Lock()
-			s.position = s.target
-			s.idle = true
-			s.lock.Unlock()
+			s.position = p
+			s.lastPWM = _pwm
 
-			s.finished.L.Lock()
-			s.finished.Broadcast()
-			s.finished.L.Unlock()
-		} else {
-			s.lock.Lock()
-			s.position = angle
+			if p == s.target {
+				s.idle = true
+				s.finished.L.Lock()
+				s.finished.Broadcast()
+				s.finished.L.Unlock()
+			}
 			s.lock.Unlock()
 		}
 	}()
 	defer s.lock.RUnlock()
 
 	if s.position == s.target {
-		return s.target, false
+		ok = true
+		return s.pin, _pwm
 	}
 
 	delta := time.Since(s.startT).Seconds() * s.step
 	if s.target < s.start {
-		angle := s.start - delta
-		if angle <= s.target {
-			return s.target, false
+		p = s.start - delta
+		if p <= s.target {
+			p = s.target
 		}
-		return angle, true
+	} else {
+		p = s.start + delta
+		if p >= s.target {
+			p = s.target
+		}
 	}
 
-	angle = s.start + delta
-	if angle >= s.target {
-		return s.target, false
-	}
+	_pwm = pwm(remap(p, 0, 180, s.minPulse, s.maxPulse))
 
-	return angle, true
-}
-
-// pwm returns the gpio and pwm.
-func (s *Servo) pwm() (gpio, pwm) {
-	a, _ := s.angle()
-	return s.pin, pwm(remap(a, 0, 180, s.minPulse, s.maxPulse))
+	return s.pin, _pwm
 }
 
 // isIdle checks if the servo is not moving.
