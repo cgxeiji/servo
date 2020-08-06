@@ -106,8 +106,11 @@ func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
 				}
 			case <-flushCh:
 				for _, servo := range b._servos {
-					pin, pwm := servo.pwm()
-					data[pin] = pwm
+					select {
+					case pwm := <-servo.pulse:
+						data[servo.pin] = pwm
+					default:
+					}
 				}
 				if len(data) != 0 {
 					b.flush(data)

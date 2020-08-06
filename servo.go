@@ -67,17 +67,18 @@ type Servo struct {
 
 	// These calibration variables should be immutables once initialized.
 	minPulse, maxPulse float64
-	lastPWM            pwm
 
-	start, target, position float64
-	done                    chan struct{}
-	startT                  time.Time
+	position, target chan float64
+	pulse            chan pwm
 
 	step, maxStep float64
+	speed         chan float64
 
-	idle     bool
+	idle     chan bool
+	unlock   chan bool
 	finished *sync.Cond
-	lock     *sync.RWMutex
+
+	wait func()
 }
 
 // updateRate is set to 3ms/degree, an approximate on 0.19s/60degrees.
@@ -99,7 +100,7 @@ func (s *Servo) String() string {
 //
 // CAUTION: Incorrect pin assignment might cause damage to your Raspberry
 // Pi.
-func Connect(GPIO int) (*Servo, error) {
+func Connect(GPIO int) (*Servo, func(), error) {
 	const maxS = 315.7
 
 	s := &Servo{
@@ -110,32 +111,104 @@ func Connect(GPIO int) (*Servo, error) {
 		minPulse: 0.05,
 		maxPulse: 0.25,
 
-		idle:     true,
+		idle:     make(chan bool),
+		unlock:   make(chan bool),
 		finished: sync.NewCond(&sync.Mutex{}),
-		lock:     new(sync.RWMutex),
 
-		done: make(chan struct{}),
+		position: make(chan float64),
+		target:   make(chan float64),
+
+		pulse: make(chan pwm),
+
+		speed: make(chan float64),
 	}
+
+	done := make(chan struct{})
+	go func() {
+		var (
+			position, target float64
+			pulse            pwm
+			startT           time.Time
+			idle             bool
+		)
+
+		for {
+			select {
+			case <-done:
+				return
+			case s.idle <- idle:
+			case s.position <- position:
+			case position = <-s.position:
+			case s.target <- target:
+			case s.step = <-s.speed:
+			case target = <-s.target:
+				idle = false
+				startT = time.Now()
+			case s.pulse <- pulse:
+				t := startT
+				startT = time.Now()
+				pulse, position, idle = s.getPulse(position, target, t)
+			}
+		}
+	}()
 
 	_blaster.subscribe(s)
 
-	return s, nil
+	closeFunc := func() {
+		_blaster.unsubscribe(s)
+		close(done)
+		_blaster.write(fmt.Sprintf("%d=%.2f", s.pin, 0.0))
+	}
+
+	return s, closeFunc, nil
 }
 
-// Close cleans up the state of the servo and deactivates the corresponding
-// GPIO pin.
-func (s *Servo) Close() {
-	_blaster.unsubscribe(s)
-	close(s.done)
-	_blaster.write(fmt.Sprintf("%d=%.2f", s.pin, 0.0))
+func (s *Servo) getPulse(p, t float64, sT time.Time) (pwm, float64, bool) {
+	idle := false
+	if p != t {
+		delta := time.Since(sT).Seconds() * s.step
+		if t < p {
+			p -= delta
+			if p < t {
+				p = t
+				idle = true
+			}
+		} else {
+			p += delta
+			if p > t {
+				p = t
+				idle = true
+			}
+		}
+	} else {
+		idle = true
+	}
+
+	if idle {
+		s.finished.L.Lock()
+		s.finished.Broadcast()
+		s.finished.L.Unlock()
+	}
+
+	pulse := pwm(remap(p, 0, 180, s.minPulse, s.maxPulse))
+
+	return pulse, p, idle
+}
+
+func (s *Servo) pwm() (gpio, pwm) {
+	pulse := <-s.pulse
+	/*
+		if s.pin == 99 {
+			fmt.Println(s, pulse, <-s.position, <-s.target)
+		}
+	*/
+	return s.pin, pulse
 }
 
 // Position returns the current angle of the servo, adjusted for its Flags.
 func (s *Servo) Position() float64 {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
+	p := <-s.position
 
-	p := s.position
 	if s.Flags.is(Centered) {
 		p -= 90
 	}
@@ -162,98 +235,39 @@ func (s *Servo) moveTo(target float64) {
 		target += 90
 	}
 
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	if s.step == 0.0 {
-		s.target = s.position
+		s.target <- <-s.position
 	} else {
-		s.target = clamp(target, 0, 180)
+		select {
+		case <-s.unlock:
+			s.unlock = make(chan bool)
+		default:
+		}
+		s.target <- clamp(target, 0, 180)
 	}
-	s.start = s.position
-	s.startT = time.Now()
-	s.idle = false
+
+	s.wait = func() {
+		<-s.unlock
+	}
 }
 
 // Speed changes the speed of the servo from (still) 0.0 to 1.0 (max speed).
 // Setting a speed of 0.0 effectively sets the target position to the current
 // position and the servo will not move.
 func (s *Servo) Speed(percentage float64) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	percentage = clamp(percentage, 0.0, 1.0)
-	s.step = s.maxStep * percentage
+	s.speed <- s.maxStep * percentage
 }
 
 // Stop stops moving the servo. This effectively sets the target position to
 // the stopped position of the servo.
 func (s *Servo) Stop() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	s.target = s.position
-	s.idle = true
-	s.finished.L.Lock()
-	s.finished.Broadcast()
-	s.finished.L.Unlock()
-}
-
-// pwm linearly interpolates an angle based on the start, finish, and
-// duration of the movement, and returns the gpio pin and adjusted pwm for the
-// current time.
-func (s *Servo) pwm() (gpio, pwm) {
-	ok := false
-	s.lock.RLock()
-	p := s.position
-	_pwm := s.lastPWM
-
-	defer func() {
-		if !ok {
-			s.lock.Lock()
-			s.position = p
-			s.lastPWM = _pwm
-
-			if p == s.target {
-				s.idle = true
-				s.finished.L.Lock()
-				s.finished.Broadcast()
-				s.finished.L.Unlock()
-			}
-			s.lock.Unlock()
-		}
-	}()
-	defer s.lock.RUnlock()
-
-	if s.position == s.target {
-		ok = true
-		return s.pin, _pwm
-	}
-
-	delta := time.Since(s.startT).Seconds() * s.step
-	if s.target < s.start {
-		p = s.start - delta
-		if p <= s.target {
-			p = s.target
-		}
-	} else {
-		p = s.start + delta
-		if p >= s.target {
-			p = s.target
-		}
-	}
-
-	_pwm = pwm(remap(p, 0, 180, s.minPulse, s.maxPulse))
-
-	return s.pin, _pwm
+	s.target <- <-s.position
 }
 
 // isIdle checks if the servo is not moving.
 func (s *Servo) isIdle() bool {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-
-	return s.idle
+	return <-s.idle
 }
 
 // Wait waits for the servo to stop moving. It is concurrent-safe.

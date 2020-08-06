@@ -22,11 +22,11 @@ func TestStress(t *testing.T) {
 			times := make([]time.Duration, 0, n)
 
 			for i := 0; i < n; i++ {
-				s, err := Connect(i)
+				s, cl, err := Connect(i)
 				if err != nil {
 					t.Fatalf("servos[%d] -> %v", i, err)
 				}
-				defer s.Close()
+				defer cl()
 				servos = append(servos, s)
 			}
 

@@ -32,11 +32,11 @@ func TestServo(t *testing.T) {
 
 func TestConnect(t *testing.T) {
 	const gpio = 99
-	s, err := Connect(gpio)
+	s, cl, err := Connect(gpio)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer cl()
 
 	if s.pin != gpio {
 		t.Errorf("GPIO does not match, got: %d, want: %d", s.pin, gpio)
@@ -48,14 +48,14 @@ func TestConnect(t *testing.T) {
 }
 
 func TestServo_Position(t *testing.T) {
-	s, err := Connect(99)
+	s, cl, err := Connect(99)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer cl()
 
-	const want = 59.6
-	s.position = want
+	const want = 0.0 //59.6
+	s.position <- want
 	got := s.Position()
 	if got != want {
 		t.Errorf("positions do not match, got: %.2f, want: %.2f", got, want)
@@ -95,15 +95,15 @@ func TestServo_MoveTo(t *testing.T) {
 		-200: 0,
 	}
 
-	s, err := Connect(99)
+	s, cl, err := Connect(99)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer cl()
 
 	for input, want := range tests {
 		s.moveTo(input)
-		got := s.target
+		got := <-s.target
 		if got != want {
 			t.Errorf("Servo.moveTo(%.2f) -> got: %.2f, want: %.2f", input, got, want)
 		}
@@ -127,11 +127,11 @@ func TestServo_MoveTo(t *testing.T) {
 }
 
 func TestServo_Reach(t *testing.T) {
-	s, err := Connect(99)
+	s, cl, err := Connect(99)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer cl()
 	done := make(chan struct{})
 
 	// Move to 180 degrees, but override concurrently to 0 when it reaches 110
@@ -179,11 +179,11 @@ func BenchmarkServo_Reach(b *testing.B) {
 	servos := make([]*Servo, 0, n)
 
 	for i := 0; i < n; i++ {
-		s, err := Connect(i)
+		s, cl, err := Connect(i)
 		if err != nil {
 			b.Fatalf("servos[%d] -> %v", i, err)
 		}
-		defer s.Close()
+		defer cl()
 		servos = append(servos, s)
 	}
 
@@ -198,7 +198,7 @@ func BenchmarkServo_Reach(b *testing.B) {
 			defer wg.Done()
 
 			for i := 0; i < b.N; i++ {
-				servos[j].position = 0
+				servos[j].position <- 0
 				servos[j].moveTo(degrees)
 				servos[j].Wait()
 			}
@@ -208,13 +208,13 @@ func BenchmarkServo_Reach(b *testing.B) {
 }
 
 func BenchmarkServo_PWM(b *testing.B) {
-	servo, err := Connect(1)
+	servo, cl, err := Connect(1)
 	if err != nil {
 		b.Fatalf("%v -> %v", servo, err)
 	}
-	defer servo.Close()
+	defer cl()
 
-	servo.position = 0
+	servo.position <- 0
 	servo.moveTo(180)
 
 	var wg sync.WaitGroup
@@ -235,11 +235,11 @@ func BenchmarkServo_PWM(b *testing.B) {
 }
 
 func TestServo_Stop(t *testing.T) {
-	s, err := Connect(99)
+	s, cl, err := Connect(99)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer cl()
 	done := make(chan struct{})
 
 	// Move to 180 degrees, but override concurrently to 0 when it reaches 110
@@ -282,11 +282,11 @@ func TestServo_Stop(t *testing.T) {
 }
 
 func TestServo_Wait(t *testing.T) {
-	s, err := Connect(99)
+	s, cl, err := Connect(99)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer cl()
 
 	// Move to 180 degrees and wait until finished.
 	degrees := 180.0

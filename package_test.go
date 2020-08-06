@@ -10,19 +10,19 @@ import (
 	"github.com/cgxeiji/servo"
 )
 
-func initServo(t *testing.T) *servo.Servo {
-	s, err := servo.Connect(99)
+func initServo(t *testing.T) (*servo.Servo, func()) {
+	s, cl, err := servo.Connect(99)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	s.Name = "Tester"
-	return s
+	return s, cl
 }
 
 func TestExportConnect(t *testing.T) {
-	s := initServo(t)
-	defer s.Close()
+	s, cl := initServo(t)
+	defer cl()
 
 	want := `servo "Tester" connected to gpio(99) [flags: ( NONE )]`
 	got := s.String()
@@ -33,8 +33,8 @@ func TestExportConnect(t *testing.T) {
 }
 
 func TestExportServo_MoveTo(t *testing.T) {
-	s := initServo(t)
-	defer s.Close()
+	s, cl := initServo(t)
+	defer cl()
 
 	var wg sync.WaitGroup
 
