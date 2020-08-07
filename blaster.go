@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"strings"
@@ -35,7 +36,7 @@ func init() {
 		buffer:  make(chan string),
 		done:    make(chan struct{}),
 		servos:  make(chan servoPkg),
-		rate:    20 * time.Millisecond,
+		rate:    40 * time.Millisecond,
 		_servos: make(map[gpio]*Servo),
 	}
 
@@ -92,6 +93,8 @@ func (b *blaster) start() error {
 func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
 	data := make(map[gpio]pwm)
 
+	updateCh := time.NewTicker(3 * time.Millisecond)
+
 	go func() {
 		for {
 			select {
@@ -104,11 +107,17 @@ func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
 				} else {
 					delete(b._servos, servo.pin)
 				}
-			case <-flushCh:
+				updateCh.Stop()
+				factor := math.Log10(float64(len(b._servos)+1))*3 + 1
+				updateCh = time.NewTicker(time.Duration(factor) * 3 * time.Millisecond)
+			case <-updateCh.C:
 				for _, servo := range b._servos {
-					pin, pwm := servo.pwm()
-					data[pin] = pwm
+					if !servo.isIdle() {
+						pin, pwm := servo.pwm()
+						data[pin] = pwm
+					}
 				}
+			case <-flushCh:
 				if len(data) != 0 {
 					b.flush(data)
 					data = make(map[gpio]pwm)

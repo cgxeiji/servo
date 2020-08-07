@@ -69,9 +69,9 @@ type Servo struct {
 	minPulse, maxPulse float64
 	lastPWM            pwm
 
-	start, target, position float64
-	done                    chan struct{}
-	startT                  time.Time
+	target, position float64
+	done             chan struct{}
+	startT           time.Time
 
 	step, maxStep float64
 
@@ -150,8 +150,9 @@ func (s *Servo) Position() float64 {
 // depends on the servo's Flags. The target is automatically clamped to the set
 // range. If called concurrently, the target position is overridden by the last
 // goroutine (usually non-deterministic).
-func (s *Servo) MoveTo(target float64) {
+func (s *Servo) MoveTo(target float64) (servo *Servo) {
 	s.moveTo(target)
+	return s
 }
 
 func (s *Servo) moveTo(target float64) {
@@ -170,7 +171,6 @@ func (s *Servo) moveTo(target float64) {
 	} else {
 		s.target = clamp(target, 0, 180)
 	}
-	s.start = s.position
 	s.startT = time.Now()
 	s.idle = false
 }
@@ -182,8 +182,7 @@ func (s *Servo) Speed(percentage float64) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	percentage = clamp(percentage, 0.0, 1.0)
-	s.step = s.maxStep * percentage
+	s.step = s.maxStep * clamp(percentage, 0.0, 1.0)
 }
 
 // Stop stops moving the servo. This effectively sets the target position to
@@ -213,6 +212,7 @@ func (s *Servo) pwm() (gpio, pwm) {
 			s.lock.Lock()
 			s.position = p
 			s.lastPWM = _pwm
+			s.startT = time.Now()
 
 			if p == s.target {
 				s.idle = true
@@ -231,13 +231,13 @@ func (s *Servo) pwm() (gpio, pwm) {
 	}
 
 	delta := time.Since(s.startT).Seconds() * s.step
-	if s.target < s.start {
-		p = s.start - delta
+	if s.target < s.position {
+		p = s.position - delta
 		if p <= s.target {
 			p = s.target
 		}
 	} else {
-		p = s.start + delta
+		p = s.position + delta
 		if p >= s.target {
 			p = s.target
 		}
