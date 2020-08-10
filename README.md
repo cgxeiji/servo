@@ -1,8 +1,8 @@
 # Servo
 
-![Version](https://img.shields.io/github/v/tag/cgxeiji/servo?sort=semver)
+[![Version](https://img.shields.io/github/v/tag/cgxeiji/servo?sort=semver)](https://github.com/cgxeiji/servo/releases)
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/cgxeiji/servo)](https://pkg.go.dev/github.com/cgxeiji/servo)
-![License](https://img.shields.io/github/license/cgxeiji/servo)
+[![License](https://img.shields.io/github/license/cgxeiji/servo)](https://github.com/cgxeiji/servo/blob/master/LICENSE)
 ![Go version](https://img.shields.io/github/go-mod/go-version/cgxeiji/servo)
 
 Servo is a Go library to control servo motors on a Raspberry Pi using pi-blaster.
