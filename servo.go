@@ -46,7 +46,7 @@ const (
 )
 
 // Servo is a struct that holds all the information necessary to control a
-// servo motor. Use the function servo.Connect(gpio) for correct
+// servo motor. Use the function servo.New(gpio) for correct
 // initialization. Servo is designed to be concurrent-safe.
 type Servo struct {
 	// pin is the GPIO pin number of the Raspberry Pi. Check that the pin is

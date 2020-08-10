@@ -43,7 +43,7 @@ func Example() {
 	// `servo.Close()`.
 	defer myServo.Close()
 
-	myServo.SetSpeed(0.5) // Set the speed to half. This is concurrently safe.
+	myServo.SetSpeed(0.5) // Set the speed to half. This is concurrent-safe.
 	myServo.MoveTo(180)   // This is a non-blocking call.
 
 	/* do some work */
