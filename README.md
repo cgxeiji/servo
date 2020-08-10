@@ -69,6 +69,8 @@ be confident that the servos will be controlled as expected.
 ## Example code
 
 ```go
+package main
+
 import (
 	"fmt"
 	"log"
@@ -76,7 +78,7 @@ import (
 	"github.com/cgxeiji/servo"
 )
 
-func Example() {
+func main() {
 	// Use servo.Close() to close the connection of all servos and pi-blaster.
 	defer servo.Close()
 
