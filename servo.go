@@ -198,6 +198,23 @@ func (s *Servo) Stop() {
 	s.finished.L.Unlock()
 }
 
+// StartPosition initializes the servo to a start angle.
+func (s *Servo) StartPosition(position float64) {
+	if s.Flags.is(Normalized) {
+		position *= 90
+	}
+	if s.Flags.is(Centered) {
+		position += 90
+	}
+
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.position = clamp(position, 0, 180)
+	s.target = s.position
+	s.idle = false
+}
+
 // pwm linearly interpolates an angle based on the start, finish, and
 // duration of the movement, and returns the gpio pin and adjusted pwm for the
 // current time.
@@ -225,7 +242,7 @@ func (s *Servo) pwm() (gpio, pwm) {
 	}()
 	defer s.lock.RUnlock()
 
-	if s.position == s.target {
+	if s.position == s.target && s.idle {
 		ok = true
 		return s.pin, _pwm
 	}
