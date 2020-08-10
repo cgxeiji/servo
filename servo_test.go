@@ -11,10 +11,10 @@ import (
 
 func init() {
 	if hasBlaster() {
-		fmt.Println("ignoring pi-blaster")
+		fmt.Println("Found pi-blaster running.")
+		fmt.Println("The test will not send anything to pi-blaster.")
 		noPiBlaster()
 	}
-	fmt.Printf("\n^ Ignore the previous warning during tests ^\n\n")
 }
 
 func TestServo(t *testing.T) {

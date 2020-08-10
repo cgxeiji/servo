@@ -191,10 +191,10 @@ func (s *Servo) moveTo(target float64) {
 	s.idle = false
 }
 
-// Speed changes the speed of the servo from (still) 0.0 to 1.0 (max speed).
+// SetSpeed changes the speed of the servo from (still) 0.0 to 1.0 (max speed).
 // Setting a speed of 0.0 effectively sets the target position to the current
 // position and the servo will not move.
-func (s *Servo) Speed(percentage float64) {
+func (s *Servo) SetSpeed(percentage float64) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -214,8 +214,8 @@ func (s *Servo) Stop() {
 	s.finished.L.Unlock()
 }
 
-// StartPosition initializes the servo to a start angle.
-func (s *Servo) StartPosition(position float64) {
+// SetPosition immediately sets the angle the servo.
+func (s *Servo) SetPosition(position float64) {
 	if s.Flags.is(Normalized) {
 		position *= 90
 	}
