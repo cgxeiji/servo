@@ -11,7 +11,8 @@ import (
 )
 
 func initServo(t *testing.T) *servo.Servo {
-	s, err := servo.Connect(99)
+	s := servo.New(99)
+	err := s.Connect()
 	if err != nil {
 		t.Fatal(err)
 	}

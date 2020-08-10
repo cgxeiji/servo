@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,6 +20,8 @@ type blaster struct {
 	_servos  map[gpio]*Servo
 
 	rate time.Duration
+
+	ws *sync.WaitGroup
 }
 
 var _blaster *blaster
@@ -95,7 +98,12 @@ func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
 
 	updateCh := time.NewTicker(3 * time.Millisecond)
 
+	var ws sync.WaitGroup
+	b.ws = &ws
+	b.ws.Add(1)
+
 	go func() {
+		defer b.ws.Done()
 		for {
 			select {
 			case <-done:
@@ -150,6 +158,7 @@ func Close() {
 func (b *blaster) close() {
 	b.write("*=0.0")
 	close(b.done)
+	b.ws.Wait()
 }
 
 // flush parses the data into "PIN=PWM PIN=PWM" format.

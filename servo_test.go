@@ -32,7 +32,8 @@ func TestServo(t *testing.T) {
 
 func TestConnect(t *testing.T) {
 	const gpio = 99
-	s, err := Connect(gpio)
+	s := New(gpio)
+	err := s.Connect()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +49,9 @@ func TestConnect(t *testing.T) {
 }
 
 func TestServo_Position(t *testing.T) {
-	s, err := Connect(99)
+	const gpio = 99
+	s := New(gpio)
+	err := s.Connect()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +98,9 @@ func TestServo_MoveTo(t *testing.T) {
 		-200: 0,
 	}
 
-	s, err := Connect(99)
+	const gpio = 99
+	s := New(gpio)
+	err := s.Connect()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +132,9 @@ func TestServo_MoveTo(t *testing.T) {
 }
 
 func TestServo_Reach(t *testing.T) {
-	s, err := Connect(99)
+	const gpio = 99
+	s := New(gpio)
+	err := s.Connect()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +186,8 @@ func BenchmarkServo_Reach(b *testing.B) {
 	servos := make([]*Servo, 0, n)
 
 	for i := 0; i < n; i++ {
-		s, err := Connect(i)
+		s := New(i)
+		err := s.Connect()
 		if err != nil {
 			b.Fatalf("servos[%d] -> %v", i, err)
 		}
@@ -208,7 +216,8 @@ func BenchmarkServo_Reach(b *testing.B) {
 }
 
 func BenchmarkServo_PWM(b *testing.B) {
-	servo, err := Connect(1)
+	servo := New(1)
+	err := servo.Connect()
 	if err != nil {
 		b.Fatalf("%v -> %v", servo, err)
 	}
@@ -235,7 +244,9 @@ func BenchmarkServo_PWM(b *testing.B) {
 }
 
 func TestServo_Stop(t *testing.T) {
-	s, err := Connect(99)
+	const gpio = 99
+	s := New(gpio)
+	err := s.Connect()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +293,9 @@ func TestServo_Stop(t *testing.T) {
 }
 
 func TestServo_Wait(t *testing.T) {
-	s, err := Connect(99)
+	const gpio = 99
+	s := New(gpio)
+	err := s.Connect()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,6 +327,21 @@ func TestServo_Wait(t *testing.T) {
 	}
 
 	wg.Wait()
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		s.moveTo(degrees)
+		<-time.After(500 * time.Millisecond)
+		s.Wait()
+	}()
+
+	select {
+	case <-time.After(1 * time.Second):
+		t.Errorf("Wait timeout after 1 second")
+	case <-done:
+	}
 }
 
 func TestClamp(t *testing.T) {

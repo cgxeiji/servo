@@ -65,13 +65,16 @@ type Servo struct {
 	// Together with servo.Centered, the range of the servo is set to -1 to 1.
 	Flags flag
 
-	// These calibration variables should be immutables once initialized.
-	minPulse, maxPulse float64
-	lastPWM            pwm
+	// MinPulse is the minimum pwm pulse of the servo. (default 0.05 s)
+	// MaxPulse is the maximum pwm pulse of the servo. (default 0.25 s)
+	// These calibration variables should be immutables once the servo is
+	// connected..
+	MinPulse, MaxPulse float64
 
 	target, position float64
 	done             chan struct{}
-	startT           time.Time
+	deltaT           time.Time
+	lastPWM          pwm
 
 	step, maxStep float64
 
@@ -94,21 +97,23 @@ func (s *Servo) String() string {
 	return fmt.Sprintf("servo %q connected to gpio(%d) [flags: %v]", s.Name, s.pin, s.Flags)
 }
 
-// Connect defines a new servo connected at a GPIO pin of the Raspberry Pi. Check that the pin is
-// controllable with pi-blaster.
+// New creates a new Servo struct with default values, connected at a GPIO pin
+// of the Raspberry Pi. You should check that the pin is controllable with pi-blaster.
 //
 // CAUTION: Incorrect pin assignment might cause damage to your Raspberry
 // Pi.
-func Connect(GPIO int) (*Servo, error) {
+func New(GPIO int) (s *Servo) {
+	// maxS is the maximun degrees/s for a tipical servo of speed
+	// 0.19s/60degrees.
 	const maxS = 315.7
 
-	s := &Servo{
+	s = &Servo{
 		pin:      gpio(GPIO),
 		Name:     fmt.Sprintf("Servo%d", GPIO),
 		maxStep:  maxS,
 		step:     maxS,
-		minPulse: 0.05,
-		maxPulse: 0.25,
+		MinPulse: 0.05,
+		MaxPulse: 0.25,
 
 		idle:     true,
 		finished: sync.NewCond(&sync.Mutex{}),
@@ -117,9 +122,14 @@ func Connect(GPIO int) (*Servo, error) {
 		done: make(chan struct{}),
 	}
 
+	return s
+}
+
+// Connect connects the servo to the pi-blaster daemon.
+func (s *Servo) Connect() error {
 	_blaster.subscribe(s)
 
-	return s, nil
+	return nil
 }
 
 // Close cleans up the state of the servo and deactivates the corresponding
@@ -146,11 +156,17 @@ func (s *Servo) Position() float64 {
 	return p
 }
 
+// Waiter implements the Wait function.
+type Waiter interface {
+	// Wait waits for the servo to finish moving.
+	Wait()
+}
+
 // MoveTo sets a target angle for the servo to move. The magnitude of the target
 // depends on the servo's Flags. The target is automatically clamped to the set
 // range. If called concurrently, the target position is overridden by the last
 // goroutine (usually non-deterministic).
-func (s *Servo) MoveTo(target float64) (servo *Servo) {
+func (s *Servo) MoveTo(target float64) (wait Waiter) {
 	s.moveTo(target)
 	return s
 }
@@ -171,7 +187,7 @@ func (s *Servo) moveTo(target float64) {
 	} else {
 		s.target = clamp(target, 0, 180)
 	}
-	s.startT = time.Now()
+	s.deltaT = time.Now()
 	s.idle = false
 }
 
@@ -229,7 +245,7 @@ func (s *Servo) pwm() (gpio, pwm) {
 			s.lock.Lock()
 			s.position = p
 			s.lastPWM = _pwm
-			s.startT = time.Now()
+			s.deltaT = time.Now()
 
 			if p == s.target {
 				s.idle = true
@@ -247,7 +263,7 @@ func (s *Servo) pwm() (gpio, pwm) {
 		return s.pin, _pwm
 	}
 
-	delta := time.Since(s.startT).Seconds() * s.step
+	delta := time.Since(s.deltaT).Seconds() * s.step
 	if s.target < s.position {
 		p = s.position - delta
 		if p <= s.target {
@@ -260,7 +276,7 @@ func (s *Servo) pwm() (gpio, pwm) {
 		}
 	}
 
-	_pwm = pwm(remap(p, 0, 180, s.minPulse, s.maxPulse))
+	_pwm = pwm(remap(p, 0, 180, s.MinPulse, s.MaxPulse))
 
 	return s.pin, _pwm
 }
