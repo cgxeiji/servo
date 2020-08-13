@@ -19,7 +19,7 @@ type blaster struct {
 	servos   chan servoPkg
 	_servos  map[gpio]*Servo
 
-	rate time.Duration
+	rate chan time.Duration
 
 	ws *sync.WaitGroup
 }
@@ -39,7 +39,7 @@ func init() {
 		buffer:  make(chan string),
 		done:    make(chan struct{}),
 		servos:  make(chan servoPkg),
-		rate:    40 * time.Millisecond,
+		rate:    make(chan time.Duration),
 		_servos: make(map[gpio]*Servo),
 	}
 
@@ -85,18 +85,19 @@ func (b *blaster) start() error {
 		return errPiBlasterNotFound
 	}
 
-	b.manager(b.done, time.NewTicker(b.rate).C)
+	b.manager(b.done)
 
 	return nil
 }
 
-// manager keeps track of changes to servos and flushes the data to pi-blaster
-// given the flushCh signal. The flush will happen only if there was a change
-// in the servos data. Everytime the data is flushed, the variable is emptied.
-func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
+// manager keeps track of changes to servos and flushes the data to pi-blaster.
+// The flush will happen only if there was a change in the servos data.
+// Everytime the data is flushed, the variable is emptied.
+func (b *blaster) manager(done <-chan struct{}) {
 	data := make(map[gpio]pwm)
 
 	updateCh := time.NewTicker(3 * time.Millisecond)
+	flushCh := time.NewTicker(40 * time.Millisecond)
 
 	var ws sync.WaitGroup
 	b.ws = &ws
@@ -114,6 +115,7 @@ func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
 					b._servos[servo.pin] = servo
 				} else {
 					delete(b._servos, servo.pin)
+					data[servo.pin] = 0.0
 				}
 				updateCh.Stop()
 				factor := math.Log10(float64(len(b._servos)+1))*3 + 1
@@ -125,7 +127,10 @@ func (b *blaster) manager(done <-chan struct{}, flushCh <-chan time.Time) {
 						data[pin] = pwm
 					}
 				}
-			case <-flushCh:
+			case rate := <-b.rate:
+				flushCh.Stop()
+				flushCh = time.NewTicker(rate)
+			case <-flushCh.C:
 				if len(data) != 0 {
 					b.flush(data)
 					data = make(map[gpio]pwm)
@@ -143,6 +148,12 @@ func (b *blaster) subscribe(servo *Servo) {
 // unsubscribe removes a Servo reference from the manager.
 func (b *blaster) unsubscribe(servo *Servo) {
 	b.servos <- servoPkg{servo, false}
+}
+
+// Rate changes the rate that data is flushed to pi-blaster (default: 40ms).
+// This can be changed on-the-fly.
+func Rate(r time.Duration) {
+	_blaster.rate <- r
 }
 
 // Close cleans up the servo package. Make sure to call this in your main

@@ -72,7 +72,6 @@ type Servo struct {
 	MinPulse, MaxPulse float64
 
 	target, position float64
-	done             chan struct{}
 	deltaT           time.Time
 	lastPWM          pwm
 
@@ -118,8 +117,6 @@ func New(GPIO int) (s *Servo) {
 		idle:     true,
 		finished: sync.NewCond(&sync.Mutex{}),
 		lock:     new(sync.RWMutex),
-
-		done: make(chan struct{}),
 	}
 
 	return s
@@ -136,8 +133,6 @@ func (s *Servo) Connect() error {
 // GPIO pin.
 func (s *Servo) Close() {
 	_blaster.unsubscribe(s)
-	close(s.done)
-	_blaster.write(fmt.Sprintf("%d=%.2f", s.pin, 0.0))
 }
 
 // Position returns the current angle of the servo, adjusted for its Flags.
